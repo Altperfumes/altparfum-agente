@@ -39,3 +39,6 @@ datos/
 *.db
 *.sqlite3
 _vista-previa.html
+
+# Config local de Claude/n8n con API keys reales — no es parte del agente
+ALT-N8N/
