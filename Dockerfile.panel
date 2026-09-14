@@ -1,0 +1,41 @@
+# El panel: estadísticas del agente + editor del prompt.
+#
+# Es una imagen aparte del webhook de WhatsApp (Dockerfile) — mismo repo,
+# otra app en Coolify, otro dominio (prompt.altparfum.cloud). A diferencia
+# del webhook, esta SÍ necesita git y un cliente SSH: para leer y publicar
+# prompts/sistema.md hace un clon propio del repo en tiempo de ejecución
+# (ver src/panel/git_publish.py).
+#
+# Toda la configuración entra por variables de entorno. El .env no se copia
+# acá adentro: en el servidor las variables las pone Coolify.
+
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING=utf-8
+
+WORKDIR /app
+
+# curl: health check del panel de Coolify.
+# git + openssh-client: para que el panel pueda clonar/pushear el repo del
+# agente al publicar un prompt nuevo.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-produccion.txt ./
+RUN pip install --no-cache-dir -r requirements-produccion.txt
+
+COPY src/ ./src/
+COPY panel.py ./
+
+# El panel corre como un usuario sin privilegios, igual que el webhook. Sí
+# necesita poder escribir en /tmp (ahí clona el repo y guarda la llave
+# temporal) — eso ya es suyo por defecto, no hace falta nada más.
+RUN useradd --create-home agente && chown -R agente:agente /app
+USER agente
+
+ENV PANEL_PUERTO=8100
+EXPOSE 8100
+
+CMD ["python", "panel.py"]

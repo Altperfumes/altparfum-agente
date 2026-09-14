@@ -24,7 +24,7 @@ permite enchufarlo a cualquier canal sin tocar una línea de acá adentro.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -51,6 +51,10 @@ class Respuesta:
     # se guardaron en el caché para la próxima.
     tokens_cache_leidos: int = 0
     tokens_cache_guardados: int = 0
+    # Qué herramientas se llamaron para armar esta respuesta (puede haber más
+    # de una, o ninguna). Lo usa el panel para saber qué se consultó sin
+    # tener que adivinarlo leyendo el texto de la respuesta.
+    herramientas_usadas: list[str] = field(default_factory=list)
 
 
 class Transmision:
@@ -197,11 +201,28 @@ class Agente:
         una conversación separada, con su propia memoria. En Telegram o
         WhatsApp acá va el número o el chat_id de la persona.
         """
+        config_hilo = self._config_hilo(conversacion)
+
+        # Cuántos mensajes había antes de este turno: es la marca de agua
+        # para saber, después, cuáles son "nuevos" (ver más abajo).
+        previos = self.grafo.get_state(config_hilo).values.get("messages", [])
+
         salida = self.grafo.invoke(
             {"messages": [HumanMessage(texto)]},
-            config=self._config_hilo(conversacion),
+            config=config_hilo,
         )
-        return _a_respuesta(salida["messages"][-1], self.config.modelo)
+
+        # Todo lo que se agregó en este turno: el mensaje de la persona, los
+        # pedidos de herramienta (si hubo), sus resultados, y la respuesta
+        # final. De ahí sacamos qué herramientas se usaron.
+        nuevos = salida["messages"][len(previos) :]
+        herramientas_usadas = [
+            m.name for m in nuevos if isinstance(m, ToolMessage) and m.name
+        ]
+
+        respuesta = _a_respuesta(salida["messages"][-1], self.config.modelo)
+        respuesta.herramientas_usadas = herramientas_usadas
+        return respuesta
 
     def responder_en_vivo(
         self, texto: str, conversacion: str = "local"

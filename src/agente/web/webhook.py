@@ -29,16 +29,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from .. import metricas
 from ..agente import Agente
 from ..canales.buffer import BufferDeMensajes
 from ..canales.chatwoot import Chatwoot
 from ..config import Config
+from ..respuesta import partir_respuesta
 
 registro = logging.getLogger("agente.webhook")
 
@@ -82,10 +85,26 @@ def crear_app(
             # el modelo). Van a un hilo aparte para no trabar el servidor:
             # mientras este mensaje se piensa, los demás siguen entrando.
             await asyncio.to_thread(canal.escribiendo, conversacion, True)
+            inicio = time.monotonic()
 
             try:
-                mensajes = await asyncio.to_thread(
-                    agente.responder_partido, texto, conversacion
+                respuesta = await asyncio.to_thread(
+                    agente.responder, texto, conversacion
+                )
+                mensajes = partir_respuesta(respuesta.texto)
+                await asyncio.to_thread(
+                    metricas.registrar,
+                    config.postgres_dsn,
+                    metricas.Evento(
+                        conversacion=conversacion,
+                        modelo=respuesta.modelo,
+                        tokens_entrada=respuesta.tokens_entrada,
+                        tokens_salida=respuesta.tokens_salida,
+                        tokens_cache_leidos=respuesta.tokens_cache_leidos,
+                        herramientas=respuesta.herramientas_usadas,
+                        texto_respuesta=respuesta.texto,
+                        duracion_ms=round((time.monotonic() - inicio) * 1000),
+                    ),
                 )
             except Exception as e:
                 # El error del proveedor no se esconde: se lo decimos a la
