@@ -86,12 +86,14 @@ def crear_app(
             # mientras este mensaje se piensa, los demás siguen entrando.
             await asyncio.to_thread(canal.escribiendo, conversacion, True)
             inicio = time.monotonic()
+            imagenes: list[str] = []
 
             try:
                 respuesta = await asyncio.to_thread(
                     agente.responder, texto, conversacion
                 )
                 mensajes = partir_respuesta(respuesta.texto)
+                imagenes = respuesta.imagenes
                 await asyncio.to_thread(
                     metricas.registrar,
                     config.postgres_dsn,
@@ -117,6 +119,14 @@ def crear_app(
 
             try:
                 await asyncio.to_thread(canal.enviar, conversacion, mensajes)
+                # Las fotos van al final, después de que el cliente ya leyó
+                # el precio y el link. canal.enviar_imagen() no tira error
+                # si algo sale mal: una foto de menos no amerita repetir el
+                # mensaje ni ensuciar el log de errores.
+                for url_imagen in imagenes:
+                    await asyncio.to_thread(
+                        canal.enviar_imagen, conversacion, url_imagen
+                    )
             except Exception as e:
                 # Acá ya no hay a quién avisarle: el canal de salida es
                 # justamente el que falló. Queda en los logs.

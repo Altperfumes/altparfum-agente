@@ -24,6 +24,7 @@ permite enchufarlo a cualquier canal sin tocar una línea de acá adentro.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Iterator
 
@@ -55,6 +56,9 @@ class Respuesta:
     # de una, o ninguna). Lo usa el panel para saber qué se consultó sin
     # tener que adivinarlo leyendo el texto de la respuesta.
     herramientas_usadas: list[str] = field(default_factory=list)
+    # Fotos de producto que encontró buscar_producto en este turno. El canal
+    # las manda como adjunto además del texto (ver canales/chatwoot.py).
+    imagenes: list[str] = field(default_factory=list)
 
 
 class Transmision:
@@ -216,12 +220,22 @@ class Agente:
         # pedidos de herramienta (si hubo), sus resultados, y la respuesta
         # final. De ahí sacamos qué herramientas se usaron.
         nuevos = salida["messages"][len(previos) :]
-        herramientas_usadas = [
-            m.name for m in nuevos if isinstance(m, ToolMessage) and m.name
+        mensajes_de_herramienta = [m for m in nuevos if isinstance(m, ToolMessage)]
+        herramientas_usadas = [m.name for m in mensajes_de_herramienta if m.name]
+
+        # Las fotos que trajo buscar_producto (ver el "[imagen]" en
+        # herramientas.py): se mandan aparte, como adjunto — nunca como texto
+        # que el modelo repita.
+        imagenes = [
+            url
+            for m in mensajes_de_herramienta
+            if m.name == "buscar_producto"
+            for url in _imagenes_de(m.content)
         ]
 
         respuesta = _a_respuesta(salida["messages"][-1], self.config.modelo)
         respuesta.herramientas_usadas = herramientas_usadas
+        respuesta.imagenes = imagenes
         return respuesta
 
     def responder_en_vivo(
@@ -355,6 +369,28 @@ def _partir_en_turnos(mensajes: list) -> list[list]:
             turnos[-1].append(mensaje)
 
     return turnos
+
+
+_RE_IMAGEN = re.compile(r"^\[imagen\]\s*(\S+)", re.MULTILINE)
+
+
+def _imagenes_de(contenido) -> list[str]:
+    """Las URLs marcadas con "[imagen]" en lo que devolvió una herramienta.
+
+    El contenido de un ToolMessage puede ser un string o (según el
+    proveedor) una lista de bloques — igual que las respuestas del modelo,
+    por eso la misma forma de sacar el texto que usa _texto_de().
+    """
+    texto = contenido if isinstance(contenido, str) else _texto_de_contenido(contenido)
+    return _RE_IMAGEN.findall(texto)
+
+
+def _texto_de_contenido(contenido) -> str:
+    if isinstance(contenido, list):
+        return "".join(
+            b.get("text", "") for b in contenido if isinstance(b, dict)
+        )
+    return str(contenido or "")
 
 
 def _sumar(acumulado, pedazo):

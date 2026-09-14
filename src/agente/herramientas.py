@@ -114,7 +114,7 @@ def clima(lugar: str) -> str:
 
 @tool
 def buscar_producto(consulta: str) -> str:
-    """Busca productos reales de la tienda: precio, variantes con stock y el link.
+    """Busca productos reales de la tienda: precio, oferta, link y una foto.
 
     Usala cuando alguien pregunte por un perfume o producto, si hay stock,
     cuánto sale, o pida una recomendación. Buscá con las palabras que usó la
@@ -122,6 +122,14 @@ def buscar_producto(consulta: str) -> str:
     ejemplo "invictus" o "one million 100ml") — esta herramienta tolera
     bastante el error de tipeo sola, así que no hace falta corregir nada
     antes de llamarla.
+
+    Si un producto tiene oferta, el precio vuelve así:
+    "Precio: ~$61.000~ → Oferta: $54.900" — mandaselo al cliente tal cual,
+    con el tachado y todo (así se ve en WhatsApp).
+
+    Si viene una línea que empieza con "[imagen]", NUNCA se la copies al
+    cliente ni la menciones: es la foto del producto, que el sistema manda
+    sola como imagen justo después de tu respuesta.
 
     Si el resultado viene sin stock, la respuesta ya trae alternativas con
     stock — ofrecelas antes de que la persona pregunte de nuevo.
@@ -510,32 +518,92 @@ def _puntaje(consulta: str, producto: dict, frecuencia: dict[str, int], total: i
 
 
 def _describir_producto(p: dict) -> str:
-    """Nombre, precio, link y variantes con stock — o alternativas si no hay."""
+    """Nombre, precio (con la oferta si hay), link, foto y stock real.
+
+    "Stock real" es la parte que se probó mal antes: acá casi ningún
+    producto lleva la cantidad exacta cargada (`stock_management` viene
+    apagado), así que el campo `stock` de la variante da `null` incluso en
+    productos que se venden todos los días. La cuenta oficial de Tiendanube
+    para "¿hay o no hay?" es el `has_stock` del producto, no el número de
+    la variante — mirar el número solo tiene sentido cuando la tienda sí
+    lo carga (ahí `stock` es un entero de verdad, no `null`).
+    """
     nombre = (p.get("name") or {}).get("es") or "producto"
     link = p.get("canonical_url") or ""
     variantes = p.get("variants") or []
 
-    precio = next(
-        (v.get("promotional_price") or v.get("price") for v in variantes if v.get("price")),
-        None,
-    )
+    lineas = [nombre]
 
-    lineas = [f"{nombre} — ${precio}" if precio else nombre]
+    precio, precio_promo = _precio_de(variantes)
+    if precio_promo:
+        lineas.append(f"Precio: ~${_fmt_precio(precio)}~ → Oferta: ${_fmt_precio(precio_promo)}")
+    elif precio:
+        lineas.append(f"Precio: ${_fmt_precio(precio)}")
+
     if link:
         lineas.append(f"Link: {link}")
 
-    con_stock = [_variante(v) for v in variantes if (v.get("stock") or 0) > 0]
-    if not con_stock:
+    if not p.get("has_stock", True):
         lineas.append("Sin stock por ahora.")
         alternativas = _buscar_alternativas(p)
         if alternativas:
             lineas.append("Alternativas con stock: " + "; ".join(alternativas))
-    elif con_stock == ["único"]:
-        lineas.append("Disponible en stock.")
     else:
-        lineas.append("Presentaciones con stock: " + ", ".join(con_stock))
+        # Achica variants a las que de verdad describen una presentación
+        # distinta (talle, ml). Si son todas iguales o no hay ninguna con
+        # `values`, no hay nada específico que aclarar: ya alcanza con
+        # saber que has_stock es true.
+        con_valores = [v for v in variantes if v.get("values")]
+        rastreado = any(v.get("stock") is not None for v in variantes)
+        if rastreado and con_valores:
+            con_stock = [_variante(v) for v in con_valores if (v.get("stock") or 0) > 0]
+            if con_stock:
+                lineas.append("Presentaciones con stock: " + ", ".join(con_stock))
+
+    imagenes = p.get("images") or []
+    if imagenes:
+        # Marcador para que el propio agente la mande como foto (ver
+        # canales/chatwoot.py). Nunca se lo tiene que repetir al cliente
+        # como texto — la regla está en prompts/sistema.md.
+        lineas.append(f"[imagen] {imagenes[0].get('src', '')}")
 
     return "\n".join(lineas)
+
+
+def _precio_de(variantes: list[dict]) -> tuple[str | None, str | None]:
+    """(precio de lista, precio con descuento) de la primera variante con precio.
+
+    El segundo valor es None si no hay oferta real (sin promotional_price,
+    o con un promotional_price que no es menor al de lista — pasa cuando
+    quedó cargado un valor viejo).
+    """
+    for v in variantes:
+        precio = v.get("price")
+        if not precio:
+            continue
+
+        promo = v.get("promotional_price")
+        try:
+            hay_oferta = bool(promo) and float(promo) < float(precio)
+        except (TypeError, ValueError):
+            hay_oferta = False
+
+        return precio, (promo if hay_oferta else None)
+
+    return None, None
+
+
+def _fmt_precio(valor) -> str:
+    """"61000.00" -> "61.000" (separador de miles a la argentina)."""
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return str(valor)
+
+    entero = int(numero)
+    centavos = round((numero - entero) * 100)
+    texto = f"{entero:,}".replace(",", ".")
+    return f"{texto},{centavos:02d}" if centavos else texto
 
 
 def _variante(variante: dict) -> str:

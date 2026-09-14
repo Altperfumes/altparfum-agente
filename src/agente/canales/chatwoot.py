@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+import uuid
 from collections import deque
 
 from .base import Canal, MensajeEntrante
@@ -194,6 +195,75 @@ class Chatwoot(Canal):
                 f"conversations/{conversacion}/messages",
                 {"content": texto, "message_type": "outgoing"},
             )
+
+    def enviar_imagen(self, conversacion: str, url_imagen: str) -> None:
+        """Manda una foto de producto como adjunto real, no como link de texto.
+
+        En WhatsApp una imagen que llega como adjunto se ve como una foto de
+        verdad (con su vista previa grande); un link de texto es una línea
+        azul más. Por eso vale la pena bajar la imagen de Tiendanube acá y
+        subirla a Chatwoot en vez de mandar la URL tal cual.
+
+        Que falle esto no puede tirar abajo la respuesta: el cliente ya se
+        enteró del precio y el link por texto. Una foto de menos no amerita
+        un error visible.
+        """
+        try:
+            pedido_imagen = urllib.request.Request(
+                url_imagen, headers={"User-Agent": "Agente AltParfum"}
+            )
+            with urllib.request.urlopen(
+                pedido_imagen, timeout=ESPERA_DE_RED
+            ) as respuesta:
+                datos = respuesta.read()
+                tipo = respuesta.headers.get("Content-Type", "image/jpeg")
+        except Exception:
+            return
+
+        nombre = url_imagen.rsplit("/", 1)[-1].split("?")[0] or "producto.jpg"
+
+        try:
+            self._api_con_archivo(conversacion, nombre, tipo, datos)
+        except Exception:
+            return
+
+    def _api_con_archivo(
+        self, conversacion: str, nombre: str, tipo: str, datos: bytes
+    ) -> None:
+        """Como _api(), pero mandando un archivo (multipart/form-data).
+
+        La API de Chatwoot no acepta un adjunto como URL en el JSON: hay que
+        subir el archivo de verdad. urllib no arma multipart solo, así que
+        se arma el cuerpo a mano — son dos partes nada más.
+        """
+        limite = f"----agente-altparfum-{uuid.uuid4().hex}"
+
+        cuerpo = bytearray()
+        cuerpo += (
+            f"--{limite}\r\n"
+            'Content-Disposition: form-data; name="message_type"\r\n\r\n'
+            "outgoing\r\n"
+        ).encode("utf-8")
+        cuerpo += (
+            f"--{limite}\r\n"
+            f'Content-Disposition: form-data; name="attachments[]"; filename="{nombre}"\r\n'
+            f"Content-Type: {tipo}\r\n\r\n"
+        ).encode("utf-8")
+        cuerpo += datos
+        cuerpo += f"\r\n--{limite}--\r\n".encode("utf-8")
+
+        url = f"{self.url}/api/v1/accounts/{self.cuenta_id}/conversations/{conversacion}/messages"
+        pedido = urllib.request.Request(
+            url,
+            data=bytes(cuerpo),
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={limite}",
+                "api_access_token": self.token,
+            },
+        )
+        with urllib.request.urlopen(pedido, timeout=ESPERA_DE_RED) as respuesta:
+            respuesta.read()
 
     def escribiendo(self, conversacion: str, encendido: bool = True) -> None:
         """El "escribiendo..." mientras el modelo piensa.
