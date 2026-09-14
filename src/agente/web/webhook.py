@@ -108,6 +108,15 @@ def crear_app(
                         duracion_ms=round((time.monotonic() - inicio) * 1000),
                     ),
                 )
+                if respuesta.incidencia:
+                    # Aparte de la etiqueta `humano`: esto no calla al
+                    # agente, solo marca la charla para que el equipo la
+                    # vea. Si falla, no le avisamos a la persona — ya tiene
+                    # su respuesta, y esto es una comodidad para el equipo,
+                    # no algo que dependa la conversación con el cliente.
+                    await asyncio.to_thread(
+                        canal.etiquetar, conversacion, "incidencia"
+                    )
             except Exception as e:
                 # El error del proveedor no se esconde: se lo decimos a la
                 # persona y queda en los logs. Pero no volteamos el servidor,

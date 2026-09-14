@@ -196,6 +196,24 @@ class Chatwoot(Canal):
                 {"content": texto, "message_type": "outgoing"},
             )
 
+    def etiquetar(self, conversacion: str, etiqueta: str) -> None:
+        """Suma una etiqueta a la conversación, sin sacar las que ya tenía.
+
+        Se usa para "incidencia": marca la charla para que el equipo la vea
+        en la bandeja, pero a propósito NO toca la etiqueta `humano` — el
+        agente sigue respondiendo ahí, la persona del equipo decide después
+        si hace falta apagarlo.
+
+        Que falle esto no puede voltear la respuesta: el cliente ya recibió
+        su mensaje, perder la etiqueta es mucho menos grave que perder eso.
+        """
+        try:
+            actuales = self._etiquetas_de(conversacion)
+            nuevas = sorted(set(actuales) | {etiqueta})
+            self._api("POST", f"conversations/{conversacion}/labels", {"labels": nuevas})
+        except Exception:
+            pass
+
     def enviar_imagen(self, conversacion: str, url_imagen: str) -> None:
         """Manda una foto de producto como adjunto real, no como link de texto.
 

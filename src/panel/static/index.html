@@ -128,11 +128,6 @@
   .dot-ok{ width:6px; height:6px; border-radius:50%; background:var(--good); }
   .dot-pend{ width:6px; height:6px; border-radius:50%; background:var(--ink-muted); }
 
-  .cost-row{ display:flex; align-items:baseline; justify-content:space-between; padding:8px 0; border-bottom:1px dashed var(--line); font-size:12.5px;}
-  .cost-row:last-child{ border-bottom:none; font-weight:700; padding-top:10px; }
-  .cost-row .k{ color:var(--ink-soft); }
-  .cost-row.total .k{ color:var(--ink); }
-
   .tester{ margin-top:18px; }
   .chat-frame{ border:1px solid var(--line); border-radius:12px; background:var(--surface-2); display:flex; flex-direction:column; height:300px;}
   .chat-log{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
@@ -214,9 +209,9 @@
 
     <div class="tiles">
       <div class="tile"><div class="lbl">1ª respuesta, promedio</div><div class="val num" id="t-latencia">—</div><div class="note">desde que llega el mensaje</div></div>
+      <div class="tile"><div class="lbl">Incidencias reportadas</div><div class="val num" id="t-incidencias">—</div><div class="note">reclamos derivados al equipo</div></div>
       <div class="tile"><div class="lbl">Traspasos a humano</div><div class="val muted" id="t-humano">Próximamente</div><div class="note">necesita leer las etiquetas de Chatwoot</div></div>
-      <div class="tile"><div class="lbl">Tokens de entrada</div><div class="val num" id="t-tok-in">—</div><div class="note">período elegido</div></div>
-      <div class="tile"><div class="lbl">Tokens de salida</div><div class="val num" id="t-tok-out">—</div><div class="note">período elegido</div></div>
+      <div class="tile"><div class="lbl">Conversaciones con respuesta</div><div class="val num" id="t-conversaciones-atencion">—</div><div class="note">período elegido</div></div>
     </div>
 
     <div class="card">
@@ -232,7 +227,7 @@
     <div class="block-head">
       <span class="idx">03</span>
       <h2>Agente</h2>
-      <span class="sub">— la personalidad, la configuración y el costo</span>
+      <span class="sub">— la personalidad y la configuración</span>
     </div>
 
     <div class="grid-3">
@@ -268,13 +263,8 @@
           <div class="cfg-row"><span class="k">Chatwoot</span><span class="v" id="cfg-chatwoot">—</span></div>
           <div class="cfg-row"><span class="k">Tienda Nube</span><span class="v" id="cfg-tiendanube">—</span></div>
           <div class="cfg-row"><span class="k">Etiqueta "humano"</span><span class="v" id="cfg-etiqueta">—</span></div>
+          <div class="cfg-row"><span class="k">Etiqueta "incidencia"</span><span class="v">activa</span></div>
         </div>
-
-        <h3 style="margin-top:20px">Costo estimado</h3>
-        <div class="card-sub">Período elegido</div>
-        <div class="cost-row"><span class="k">Tokens de entrada</span><span class="v num" id="c-tok-in">—</span></div>
-        <div class="cost-row"><span class="k">Tokens de salida</span><span class="v num" id="c-tok-out">—</span></div>
-        <div class="cost-row"><span class="k">Desde caché</span><span class="v num" id="c-cache">—</span></div>
       </div>
     </div>
   </section>
@@ -286,12 +276,6 @@
 (function(){
   var rangoActual = '7d';
 
-  function fmt(n){
-    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n/1000).toFixed(1) + 'K';
-    return String(n);
-  }
-
   // ---- estadísticas ----
   function cargarStats(){
     fetch('/api/stats?rango=' + rangoActual)
@@ -301,13 +285,8 @@
         document.getElementById('t-links').textContent = d.links_enviados;
         document.getElementById('t-productos').textContent = d.consultas_producto;
         document.getElementById('t-pedidos').textContent = d.consultas_pedido;
-        document.getElementById('t-tok-in').textContent = fmt(d.tokens_entrada);
-        document.getElementById('t-tok-out').textContent = fmt(d.tokens_salida);
-        document.getElementById('c-tok-in').textContent = fmt(d.tokens_entrada);
-        document.getElementById('c-tok-out').textContent = fmt(d.tokens_salida);
-        var entradas = d.tokens_entrada || 0;
-        var pctCache = entradas > 0 ? Math.round((d.tokens_cache_leidos / entradas) * 100) : 0;
-        document.getElementById('c-cache').textContent = pctCache + '%';
+        document.getElementById('t-incidencias').textContent = d.incidencias;
+        document.getElementById('t-conversaciones-atencion').textContent = d.conversaciones_con_respuesta;
         document.getElementById('t-latencia').textContent = d.duracion_ms_promedio > 0
           ? (d.duracion_ms_promedio / 1000).toFixed(1) + 's'
           : '—';

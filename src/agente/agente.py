@@ -59,6 +59,10 @@ class Respuesta:
     # Fotos de producto que encontró buscar_producto en este turno. El canal
     # las manda como adjunto además del texto (ver canales/chatwoot.py).
     imagenes: list[str] = field(default_factory=list)
+    # El motivo, si en este turno se llamó a reportar_incidencia. El canal
+    # etiqueta la conversación con esto (ver canales/chatwoot.py); None si
+    # no hubo ninguna.
+    incidencia: str | None = None
 
 
 class Transmision:
@@ -233,9 +237,20 @@ class Agente:
             for url in _imagenes_de(m.content)
         ]
 
+        # El motivo de la última vez que se llamó a reportar_incidencia en
+        # este turno (normal que sea como mucho una vez, pero por las dudas
+        # nos quedamos con la última).
+        incidencia = None
+        for m in mensajes_de_herramienta:
+            if m.name == "reportar_incidencia":
+                motivos = _incidencias_de(m.content)
+                if motivos:
+                    incidencia = motivos[-1]
+
         respuesta = _a_respuesta(salida["messages"][-1], self.config.modelo)
         respuesta.herramientas_usadas = herramientas_usadas
         respuesta.imagenes = imagenes
+        respuesta.incidencia = incidencia
         return respuesta
 
     def responder_en_vivo(
@@ -372,6 +387,13 @@ def _partir_en_turnos(mensajes: list) -> list[list]:
 
 
 _RE_IMAGEN = re.compile(r"^\[imagen\]\s*(\S+)", re.MULTILINE)
+_RE_INCIDENCIA = re.compile(r"^\[incidencia\]\s*(.+)$", re.MULTILINE)
+
+
+def _incidencias_de(contenido) -> list[str]:
+    """Los motivos marcados con "[incidencia]" en lo que devolvió una herramienta."""
+    texto = contenido if isinstance(contenido, str) else _texto_de_contenido(contenido)
+    return [m.strip() for m in _RE_INCIDENCIA.findall(texto)]
 
 
 def _imagenes_de(contenido) -> list[str]:

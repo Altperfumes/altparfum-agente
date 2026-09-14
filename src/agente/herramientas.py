@@ -204,9 +204,39 @@ def consultar_pedido(nombre: str, correo: str, numero_orden: str) -> str:
     return _describir_pedido(pedido)
 
 
+@tool
+def reportar_incidencia(motivo: str) -> str:
+    """Deriva un reclamo o problema real al equipo — no es para dudas normales.
+
+    Usala cuando la persona cuenta un problema de verdad, algo que ninguna
+    otra herramienta resuelve: un producto que llegó roto, incompleto o
+    equivocado; un pedido perdido o muy demorado; un reclamo por un cobro;
+    un pedido de reembolso o cambio; una queja en general. No la uses para
+    preguntas normales de producto (ahí va buscar_producto) ni para
+    consultar cómo viene un pedido sin quejas (ahí va consultar_pedido).
+
+    Esta herramienta NO apaga al agente en la conversación — solo la marca
+    para que el equipo la vea y la tome. Vos seguís charlando normal
+    después de avisarle a la persona.
+
+    La primera línea de lo que te devuelve es el mensaje para el cliente:
+    mandaselo tal cual, sin cambiarle una palabra. La segunda línea (que
+    empieza con "[incidencia]") nunca se la mostrás ni se la mencionás — es
+    una marca interna para que el sistema etiquete la conversación sola.
+
+    Args:
+        motivo: un resumen corto (una frase) de cuál es el problema.
+    """
+    return (
+        "Ya tomé nota de tu caso y lo derivé a nuestro equipo para que le "
+        "den prioridad, en breve te contactan para resolverlo.\n"
+        f"[incidencia] {motivo.strip() or 'sin detalle'}"
+    )
+
+
 # Lo que el agente tiene atado. Cuando agregues otra herramienta, sumala acá:
 # es la única lista que mira el grafo.
-HERRAMIENTAS = [clima, buscar_producto, consultar_pedido]
+HERRAMIENTAS = [clima, buscar_producto, consultar_pedido, reportar_incidencia]
 
 
 # -- Las consultas ------------------------------------------------------------

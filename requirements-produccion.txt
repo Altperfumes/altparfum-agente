@@ -13,5 +13,8 @@ langgraph-checkpoint-postgres>=3.1,<4
 
 # Con [binary], que trae la libpq adentro. Sin eso hay que instalar la
 # libpq del sistema aparte, y el error que tira ("no pq wrapper available")
-# no se parece en nada a lo que falta.
-psycopg[binary]>=3.2,<4
+# no se parece en nada a lo que falta. Con [pool], que suma psycopg_pool:
+# la memoria usa un pool en vez de una sola conexión fija, para reconectar
+# sola si Postgres corta una conexión inactiva (pasa seguido con WhatsApp,
+# que puede estar horas calladito).
+psycopg[binary,pool]>=3.2,<4
